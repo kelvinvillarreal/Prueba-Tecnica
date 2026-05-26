@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: spring-boot-webflux-apirest
+  
+  webflux:
+    base-path: /api
+  
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/test_database}
+      auto-index-creation: true
+
+config:
+  uploads:
+    path: ./uploads/
+
+logging:
+  level:
+    root: INFO
+    com.webflux.app: DEBUG
+    org.springframework.web: INFO
+    org.springframework.data: DEBUG
+    org.springframework.cloud: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 10
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    enabled: true
+  instance:
+    instance-id: ${spring.application.name}:${spring.cloud.client.hostname}:${server.port}
