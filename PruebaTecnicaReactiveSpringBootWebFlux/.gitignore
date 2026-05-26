@@ -1,0 +1,17 @@
+.env
+*.log
+.DS_Store
+.idea/
+*.iml
+target/
+node_modules/
+.gradle/
+build/
+.vscode/
+.classpath
+.project
+.settings/
+*.swp
+*.swo
+*~
+upload*/

@@ -5,59 +5,70 @@ services:
     image: mongo:latest
     container_name: test
     ports:
-      - 27018:27018
+      - 27017:27017
     environment:
       - MONGO_INITDB_DATABASE=test_database
     networks:
       - backend
     labels:
-      - "container_group=TIG" 
+      - "container_group=TIG"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   
   # DevOps #
-  #eureka-server:
-    #image: eureka
-    #restart: always 
-    #container_name: eureka
-    #ports:
-      #- '8761:8761'
-    #environment:
-      #- SPRING_PROFILES_ACTIVE=dev
-    #networks:
-      #- backend
-    #labels:
-      #- "container_group=TIG"
+  eureka-server:
+    image: eureka:latest
+    restart: always 
+    container_name: eureka-server
+    ports:
+      - '8761:8761'
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+    networks:
+      - backend
+    labels:
+      - "container_group=TIG"
+    depends_on:
+      test:
+        condition: service_healthy
   
-  #gateway-service:
-    #image: gateway:0.0.1-SNAPSHOT
-    #container_name: gateway-service
-    #depends_on:
-      #- eureka-server
-    #ports:
-      #- 8080:8080
-    #environment:
-      #- SPRING_PROFILES_ACTIVE=dev
-    #networks:
-      #- backend
-    #labels:
-      #- "container_group=TIG"
+  gateway-service:
+    image: gateway:0.0.1-SNAPSHOT
+    container_name: gateway-service
+    depends_on:
+      - eureka-server
+    ports:
+      - 8080:8080
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+      - EUREKA_URI=${EUREKA_URI}
+    networks:
+      - backend
+    labels:
+      - "container_group=TIG"
   
   # SERVICES #
-  #person-service:
-    #image: person:0.0.1-SNAPSHOT
-    #depends_on:
-      #- eureka-server
-      #- gateway-service
-    #links:
-      #- test
-    #ports:
-      #- 8180:8180
-    #environment:
-      #- SPRING_PROFILES_ACTIVE=dev
-      #- SPRING_DATA_MONGODB_URI=mongodb://test:27018/test_database 
-    #networks:
-      #- backend
-    #labels:
-      #- "container_group=TIG"
+  person-service:
+    image: person:0.0.1-SNAPSHOT
+    depends_on:
+      - eureka-server
+      - gateway-service
+      - test
+    links:
+      - test
+    ports:
+      - 8180:8180
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+      - SPRING_DATA_MONGODB_URI=${SPRING_DATA_MONGODB_URI}
+      - EUREKA_URI=${EUREKA_URI}
+    networks:
+      - backend
+    labels:
+      - "container_group=TIG"
   
   # influxdb #
   influxdb:
@@ -66,15 +77,18 @@ services:
     ports:
       - 8086:8086
     environment:
-      - INFLUXDB_DB=k6
-      - INFLUXDB_USER=k6
-      - INFLUXDB_USER_PASSWORD=xxxxxxx
-    #volumes:
-      #- influxdb:$PWD/var/lib/influxdb
+      - INFLUXDB_DB=${INFLUXDB_DB}
+      - INFLUXDB_USER=${INFLUXDB_USER}
+      - INFLUXDB_USER_PASSWORD=${INFLUXDB_PASSWORD}
     networks:
       - backend
     labels:
-      - "container_group=TIG" 
+      - "container_group=TIG"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   
   # grafana #
   grafana:
@@ -83,22 +97,26 @@ services:
     ports:
       - 3000:3000
     environment:
-      - GF_SERVER_ROOT_URL=http://192.168.2.3
-      - GF_SECURITY_ADMIN_PASSWORD=xxxxxxxx
+      - GF_SERVER_ROOT_URL=http://${GRAFANA_DOMAIN}:3000
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-worldmap-panel,raintank-worldping-app,jdbranham-diagram-panel
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SECURITY_DISABLE_GRAVATAR=true
-      - GF_SERVER_DOMAIN=ejemplo.com
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN}
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_BASIC_ENABLED=false
+    depends_on:
+      influxdb:
+        condition: service_healthy
     links:
       - influxdb
     volumes:
-      #- ./shared/grafana/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml
-      #- ./shared/grafana/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
-      #- ./shared/grafana:/etc/grafana/provisioning/
-      - grafana:$PWD/var/lib/grafana
+      - grafana_storage:/var/lib/grafana
+    networks:
+      - backend
+    labels:
+      - "container_group=TIG"
   
   # simulado #
   simulado:
@@ -123,7 +141,10 @@ services:
     volumes:
       - ./shared/k6:/scripts
     environment:
-      - K6_OUT=influxdb=http://influxdb:8086/k6
+      - K6_OUT=influxdb=http://influxdb:8086/${INFLUXDB_DB}
+    depends_on:
+      influxdb:
+        condition: service_healthy
     networks:
       - backend
     labels:
@@ -131,7 +152,7 @@ services:
 
 networks:
   backend:
+    driver: bridge
 
 volumes:
-  grafana: {}
-  #influxdb: {}
+  grafana_storage:
